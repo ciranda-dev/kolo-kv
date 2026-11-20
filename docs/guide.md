@@ -112,7 +112,7 @@ apply the delete marker, which destroys the entry key. A peer that already
 received the key can keep it, and old copies of a disk keep a working key
 (see kolo-store). A deleted key's name stays in its delete entry; keep
 secrets in values, not in keys. A snapshot or iterator made before a
-`Delete` no longer returns the destroyed value: deletion wins over older
+`Delete` does not return the destroyed value: deletion wins over older
 views.
 
 There are no transactions, no secondary indexes and no compaction. The
