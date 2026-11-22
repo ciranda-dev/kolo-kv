@@ -1,6 +1,7 @@
 package kolokv
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -140,12 +141,16 @@ func (db *DB) writable() error {
 // Put sets key to value. Both are copied. Put does not destroy the older value of key; Delete does. Once key holds
 // 65536 values since its last delete, the next Put first deletes them; if that delete fails after its delete entry
 // was written, Put returns the error without setting key, and key is already deleted.
-func (db *DB) Put(key, value []byte) error {
+// A ctx that is already done writes nothing and returns ctx.Err(); after that check the write runs to its end.
+func (db *DB) Put(ctx context.Context, key, value []byte) error {
 	if len(key) > MaxKeySize {
 		return ErrKeyTooLarge
 	}
 	if len(value) > MaxValueSize {
 		return ErrValueTooLarge
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	db.mu.Lock()
 	defer db.mu.Unlock()
@@ -175,8 +180,11 @@ func (db *DB) Put(key, value []byte) error {
 // Delete removes key with a delete entry that lists every value of key since its last delete, then destroys
 // their entry keys in one write. A missing key is not an error.
 // If Delete fails after its delete entry was written, the key is gone but its old entries are not destroyed yet;
-// open the log again to destroy them.
-func (db *DB) Delete(key []byte) error {
+// open the log again to destroy them. A ctx that is already done writes nothing and returns ctx.Err().
+func (db *DB) Delete(ctx context.Context, key []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	if err := db.writable(); err != nil {

@@ -27,7 +27,7 @@ A put of a new key inserts into a sorted slice and moves the keys after it while
 
 ## Concurrency
 
-A `DB` and a `Snapshot` are safe for concurrent use. Writes are serialized. An `Iterator` is for one goroutine. No call waits on the network, so none takes a `context.Context`.
+A `DB` and a `Snapshot` are safe for concurrent use. Writes are serialized. An `Iterator` is for one goroutine. No call waits on the network: `Put` and `Delete` take a `context.Context` for the `Store` interface and check it once before they write.
 
 ## Not provided
 

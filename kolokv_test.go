@@ -2,8 +2,10 @@ package kolokv
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -34,7 +36,7 @@ func TestPutGetDelete(t *testing.T) {
 func TestArgumentsAreCopied(t *testing.T) {
 	db, _, _ := newDB(t)
 	k, v := []byte("k"), []byte("v")
-	if err := db.Put(k, v); err != nil {
+	if err := db.Put(context.Background(), k, v); err != nil {
 		t.Fatal(err)
 	}
 	k[0], v[0] = 'x', 'x'
@@ -443,19 +445,19 @@ func TestMaxSizes(t *testing.T) {
 	db, s, id := newDB(t)
 	bigKey := bytes.Repeat([]byte("k"), MaxKeySize)
 	bigValue := bytes.Repeat([]byte("v"), MaxValueSize)
-	if err := db.Put(bigKey, bigValue); err != nil {
+	if err := db.Put(context.Background(), bigKey, bigValue); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Put(append(bigKey, 'k'), nil); !errors.Is(err, ErrKeyTooLarge) {
+	if err := db.Put(context.Background(), append(bigKey, 'k'), nil); !errors.Is(err, ErrKeyTooLarge) {
 		t.Fatalf("key over MaxKeySize: %v", err)
 	}
-	if err := db.Put([]byte("k"), append(bigValue, 'v')); !errors.Is(err, ErrValueTooLarge) {
+	if err := db.Put(context.Background(), []byte("k"), append(bigValue, 'v')); !errors.Is(err, ErrValueTooLarge) {
 		t.Fatalf("value over MaxValueSize: %v", err)
 	}
 	if db.Len() != 1 {
 		t.Fatalf("Len = %d, want 1", db.Len())
 	}
-	if err := db.Delete(append(bigKey, 'k')); err != nil {
+	if err := db.Delete(context.Background(), append(bigKey, 'k')); err != nil {
 		t.Fatalf("Delete of a key over MaxKeySize: %v", err)
 	}
 	db = reopen(t, db, s, id)
@@ -474,10 +476,10 @@ func TestClosed(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatalf("second Close: %v", err)
 	}
-	if err := db.Put([]byte("a"), nil); !errors.Is(err, ErrClosed) {
+	if err := db.Put(context.Background(), []byte("a"), nil); !errors.Is(err, ErrClosed) {
 		t.Fatalf("Put: %v", err)
 	}
-	if err := db.Delete([]byte("a")); !errors.Is(err, ErrClosed) {
+	if err := db.Delete(context.Background(), []byte("a")); !errors.Is(err, ErrClosed) {
 		t.Fatalf("Delete: %v", err)
 	}
 	if _, err := db.Get([]byte("a")); !errors.Is(err, ErrClosed) {
@@ -509,12 +511,12 @@ func TestConcurrentUse(t *testing.T) {
 			defer wg.Done()
 			for i := range 25 {
 				k := []byte(fmt.Sprintf("w%d-%02d", w, i))
-				if err := db.Put(k, k); err != nil {
+				if err := db.Put(context.Background(), k, k); err != nil {
 					t.Error(err)
 					return
 				}
 				if i%3 == 0 {
-					if err := db.Delete(k); err != nil {
+					if err := db.Delete(context.Background(), k); err != nil {
 						t.Error(err)
 						return
 					}
@@ -677,7 +679,7 @@ func wantDestroyedOnReopen(t *testing.T, db *DB, s *kolostore.Store, id *koloid.
 
 func TestDeleteWhoseDestroyFails(t *testing.T) {
 	db, s, id := failedErase(t)
-	if err := db.Delete([]byte("k")); !errors.Is(err, errDisk) {
+	if err := db.Delete(context.Background(), []byte("k")); !errors.Is(err, errDisk) {
 		t.Fatalf("Delete: %v, want the disk error", err)
 	}
 	wantMissing(t, db, "k")
@@ -689,7 +691,7 @@ func TestPutWhoseAutomaticDeleteFails(t *testing.T) {
 	defer func(n int) { maxPuts = n }(maxPuts)
 	maxPuts = 2
 	db, s, id := failedErase(t)
-	if err := db.Put([]byte("k"), []byte("v3")); !errors.Is(err, errDisk) {
+	if err := db.Put(context.Background(), []byte("k"), []byte("v3")); !errors.Is(err, errDisk) {
 		t.Fatalf("Put: %v, want the disk error", err)
 	}
 	// The delete entry is written and the new value is not.
@@ -722,4 +724,94 @@ func TestDeleteDestroysInOneWrite(t *testing.T) {
 			t.Errorf("Delete of 50 values made %d writes, want 2", n)
 		}
 	})
+}
+
+func TestPutHonoursContext(t *testing.T) {
+	db, _, _ := newDB(t)
+	put(t, db, "a", "1")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := db.Put(ctx, []byte("b"), []byte("2")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Put with a done ctx: %v", err)
+	}
+	if err := db.Put(ctx, []byte("a"), []byte("2")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("overwrite with a done ctx: %v", err)
+	}
+	if err := db.Put(ctx, make([]byte, MaxKeySize+1), nil); !errors.Is(err, ErrKeyTooLarge) {
+		t.Fatalf("size errors come before ctx: %v", err)
+	}
+	if db.Len() != 1 {
+		t.Fatalf("Len = %d, want 1", db.Len())
+	}
+	wantValue(t, db, "a", "1")
+	wantMissing(t, db, "b")
+}
+
+func TestDeleteHonoursContext(t *testing.T) {
+	db, _, _ := newDB(t)
+	put(t, db, "a", "1")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := db.Delete(ctx, []byte("a")); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Delete with a done ctx: %v", err)
+	}
+	if db.Len() != 1 {
+		t.Fatalf("Len = %d, want 1", db.Len())
+	}
+	wantValue(t, db, "a", "1")
+}
+
+func TestNewIteratorStopsSeq(t *testing.T) {
+	errStop := errors.New("stop failed")
+	var events []string
+	seq := func(n int) iter.Seq2[[]byte, []byte] {
+		return func(yield func([]byte, []byte) bool) {
+			defer func() { events = append(events, "seq") }()
+			for i := range n {
+				if !yield([]byte{byte('a' + i)}, []byte{byte('A' + i)}) {
+					return
+				}
+			}
+		}
+	}
+	stop := func() error { events = append(events, "stop"); return errStop }
+
+	// Next to the end releases at once: stop ran, once, and Err reports its result.
+	it := NewIterator(seq(2), stop)
+	if got := drain(it); !slices.Equal(got, []string{"a=A", "b=B"}) {
+		t.Fatalf("pairs = %q", got)
+	}
+	if !slices.Equal(events, []string{"seq", "stop"}) || !errors.Is(it.Err(), errStop) {
+		t.Fatalf("after Next to the end: events %q, Err %v", events, it.Err())
+	}
+	if err := it.Close(); !errors.Is(err, errStop) || it.Close() != errStop || len(events) != 2 {
+		t.Fatalf("Close after the end: events %q", events)
+	}
+
+	// Close before the end stops seq first, then calls stop once.
+	events = nil
+	it = NewIterator(seq(10), stop)
+	if !it.Next() || string(it.Key()) != "a" {
+		t.Fatal("first Next")
+	}
+	if err := it.Close(); !errors.Is(err, errStop) {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := it.Close(); !errors.Is(err, errStop) {
+		t.Fatalf("second Close: %v", err)
+	}
+	if !slices.Equal(events, []string{"seq", "stop"}) {
+		t.Fatalf("events = %q, want seq then stop, once", events)
+	}
+	if it.Next() || it.Key() != nil || it.Value() != nil {
+		t.Fatal("Next after Close")
+	}
+}
+
+func drain(it *Iterator) []string {
+	var out []string
+	for it.Next() {
+		out = append(out, string(it.Key())+"="+string(it.Value()))
+	}
+	return out
 }

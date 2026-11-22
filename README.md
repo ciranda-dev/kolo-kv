@@ -28,6 +28,7 @@ Create a store, write and delete keys, then list a prefix. The program takes the
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -54,9 +55,10 @@ func main() {
 	check(err)
 	defer db.Close()
 
-	check(db.Put([]byte("user/ana"), []byte("admin")))
-	check(db.Put([]byte("user/bo"), []byte("guest")))
-	check(db.Delete([]byte("user/bo")))
+	ctx := context.Background()
+	check(db.Put(ctx, []byte("user/ana"), []byte("admin")))
+	check(db.Put(ctx, []byte("user/bo"), []byte("guest")))
+	check(db.Delete(ctx, []byte("user/bo")))
 
 	it := db.Prefix([]byte("user/"))
 	for it.Next() {
@@ -85,16 +87,19 @@ To open the store again later, keep `me` with [kolo-id](https://github.com/ciran
 |---|---|
 | `Open(l)` | Rebuild a writable store from your own kolo-store `Log` |
 | `OpenReader(r)` | Rebuild a read-only store from a kolo-store `Replica` of someone else's log |
-| `Put(key, value)` | Set a key; the older value stays readable in the log until `Delete` |
+| `Put(ctx, key, value)` | Set a key; the older value stays readable in the log until `Delete`; a done `ctx` writes nothing |
 | `Get(key)` | A copy of the value, or `ErrNotFound` |
-| `Delete(key)` | Remove a key and destroy its older values; a missing key writes nothing |
+| `Delete(ctx, key)` | Remove a key and destroy its older values; a missing key writes nothing; a done `ctx` writes nothing |
 | `Range(start, end)`, `Prefix(p)` | Iterate over `[start, end)` or over a prefix, in byte order |
 | `Iterator` | `Next`, `Key`, `Value`, `Err`, `Close` |
+| `Store` | The interface `Put`, `Delete`, `Get`, `Range`, `Prefix` and `Close`; `*DB` implements it |
+| `NewIterator(seq, stop)` | An `Iterator` over an `iter.Seq2`, for a `Store` outside this package |
+| `kolokvtest.TestStore` | A test suite for the `Store` contract, to run against your own implementation |
 | `Snapshot()` | A read view at the current log length |
 | `Len()`, `Refresh()` | Entries the state is built from; rebuild a reader after its replica grew |
 | `Close()` | Close the store and its log or replica |
 
-The log must use the `kololog.Bytes` value encoding. A `DB` and a `Snapshot` are safe for concurrent use, and writes are serialized.
+The log must use the `kololog.Bytes` value encoding. Write code against `Store` to keep the writer model open. A `DB` and a `Snapshot` are safe for concurrent use, and writes are serialized.
 
 Errors work with `errors.Is`: `ErrNotFound`, `ErrReadOnly`, `ErrClosed`, `ErrKeyTooLarge`, `ErrValueTooLarge` and `ErrCorrupt`. Errors from kolo-store and kolo-log pass through wrapped.
 

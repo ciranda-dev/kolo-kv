@@ -2,6 +2,7 @@ package kolokv
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -284,7 +285,7 @@ func modelRun(t *testing.T, seed uint64) {
 				m.appendEnt(ment{del: true, key: k, list: slices.Clone(m.puts[k])}, "")
 			}
 			m.appendEnt(ment{key: k}, v)
-			if err := db.Put([]byte(k), []byte(v)); err != nil {
+			if err := db.Put(context.Background(), []byte(k), []byte(v)); err != nil {
 				t.Fatal(err)
 			}
 			record()
@@ -293,7 +294,7 @@ func modelRun(t *testing.T, seed uint64) {
 			if _, ok := m.cur()[k]; ok {
 				m.appendEnt(ment{del: true, key: k, list: slices.Clone(m.puts[k])}, "")
 			}
-			if err := db.Delete([]byte(k)); err != nil {
+			if err := db.Delete(context.Background(), []byte(k)); err != nil {
 				t.Fatal(err)
 			}
 			record()
