@@ -11,7 +11,8 @@ import (
 	kolokv "github.com/ciranda-dev/kolo-kv"
 )
 
-// TestStore checks the Store contract on stores made by open; settle waits until the writes made so far are readable.
+// TestStore checks the Store contract on stores made by open; settle waits until the writes made so far are readable,
+// and nil means they are readable at once.
 func TestStore(t *testing.T, open func(t *testing.T) kolokv.Store, settle func(t *testing.T, s kolokv.Store)) {
 	t.Run("GetMissing", func(t *testing.T) {
 		e := newEnv(t, open, settle)
@@ -176,6 +177,9 @@ type env struct {
 
 func newEnv(t *testing.T, open func(t *testing.T) kolokv.Store, settle func(t *testing.T, s kolokv.Store)) *env {
 	t.Helper()
+	if settle == nil {
+		settle = func(*testing.T, kolokv.Store) {}
+	}
 	return &env{t: t, s: open(t), settle: settle}
 }
 

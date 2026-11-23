@@ -19,9 +19,16 @@ type Store interface {
 
 var _ Store = (*DB)(nil)
 
-// NewIterator returns an Iterator over seq for a Store outside this package. Next calls stop once seq ends; Close stops
-// seq first, then calls stop if Next did not. stop runs once and its result is what Err returns.
+// NewIterator returns an Iterator over seq, which must yield slices the caller may keep, for a Store outside this package.
+// Next calls stop once seq ends; Close stops seq first, then calls stop if Next did not; its result is what Err returns.
+// A nil stop releases nothing and a nil seq yields nothing.
 func NewIterator(seq iter.Seq2[[]byte, []byte], stop func() error) *Iterator {
+	if seq == nil {
+		seq = func(func([]byte, []byte) bool) {}
+	}
+	if stop == nil {
+		stop = func() error { return nil }
+	}
 	pull, cancel := iter.Pull2(seq)
 	return &Iterator{pull: pull, cancel: cancel, stop: stop}
 }
