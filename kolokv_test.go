@@ -808,6 +808,35 @@ func TestNewIteratorStopsSeq(t *testing.T) {
 	}
 }
 
+func TestNewIteratorNilStopAndSeq(t *testing.T) {
+	seq := func(yield func([]byte, []byte) bool) {
+		for _, k := range []string{"a", "b"} {
+			if !yield([]byte(k), []byte(k)) {
+				return
+			}
+		}
+	}
+	it := NewIterator(seq, nil)
+	if got := drain(it); !slices.Equal(got, []string{"a=a", "b=b"}) || it.Err() != nil {
+		t.Fatalf("to the end: pairs %q, Err %v", got, it.Err())
+	}
+	if err := it.Close(); err != nil {
+		t.Fatalf("Close after the end: %v", err)
+	}
+	it = NewIterator(seq, nil)
+	if !it.Next() {
+		t.Fatal("Next")
+	}
+	if err := it.Close(); err != nil {
+		t.Fatalf("Close before the end: %v", err)
+	}
+
+	it = NewIterator(nil, nil)
+	if it.Next() || it.Close() != nil {
+		t.Fatal("nil seq must yield nothing")
+	}
+}
+
 func drain(it *Iterator) []string {
 	var out []string
 	for it.Next() {

@@ -40,9 +40,11 @@ Walkthrough of the API and the design. The on-disk form is in [formats.md](forma
   for every writer model. Another implementation of `Store` builds its
   iterators with `NewIterator(seq, stop)`: `Next` calls `stop` once `seq` ends,
   `Close` stops `seq` first and then calls `stop` if `Next` did not, and the
-  result of `stop` is what `Err` returns. `kolokvtest.TestStore` runs the
-  contract against a store made by a function you give it, with a `settle`
-  function that waits until the writes made so far are readable.
+  result of `stop` is what `Err` returns. `seq` must yield slices the caller
+  may keep; a nil `stop` releases nothing and a nil `seq` yields nothing.
+  `kolokvtest.TestStore` runs the contract against a store made by a function
+  you give it, with a `settle` function that waits until the writes made so
+  far are readable (nil when they are readable at once).
 - `Snapshot()` returns a read view at the current log length, with `Get`,
   `Range`, `Prefix` and `Len`. It copies the index (keys and entry
   numbers, no values), holds no resources and needs no closing.
