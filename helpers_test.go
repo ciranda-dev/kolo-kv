@@ -2,6 +2,7 @@ package kolokv
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -114,14 +115,14 @@ func applyMarkers(t testing.TB, r *kolostore.Replica, l *kolostore.Log) {
 
 func put(t testing.TB, db *DB, key, value string) {
 	t.Helper()
-	if err := db.Put([]byte(key), []byte(value)); err != nil {
+	if err := db.Put(context.Background(), []byte(key), []byte(value)); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func del(t testing.TB, db *DB, key string) {
 	t.Helper()
-	if err := db.Delete([]byte(key)); err != nil {
+	if err := db.Delete(context.Background(), []byte(key)); err != nil {
 		t.Fatal(err)
 	}
 }

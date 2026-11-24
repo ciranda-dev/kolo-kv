@@ -10,7 +10,9 @@ Walkthrough of the API and the design. The on-disk form is in [formats.md](forma
   and on the writer every write must go through the `DB`. The log must use
   the `kololog.Bytes` value encoding. If `Open` fails, the handle stays
   open.
-- `Put(key, value)` sets a key. Once a key holds 65536 values since its
+- `Put(ctx, key, value)` sets a key. A `ctx` that is already done writes nothing
+  and returns `ctx.Err()`; the check comes after the size checks, and once it
+  passes the write runs to its end. Once a key holds 65536 values since its
   last delete, the next `Put` first deletes them, which bounds the size of
   a delete entry. If that delete fails after its delete entry is written,
   `Put` returns the error without setting the key, and the key is already
@@ -19,8 +21,9 @@ Walkthrough of the API and the design. The on-disk form is in [formats.md](forma
   `ErrKeyTooLarge` or `ErrValueTooLarge`. The empty key is a valid key.
   Arguments are copied.
 - `Get(key)` returns a copy of the value, or `ErrNotFound`.
-- `Delete(key)` removes a key. A missing key is not an error and writes
-  nothing.
+- `Delete(ctx, key)` removes a key. A missing key is not an error and writes
+  nothing. A `ctx` that is already done writes nothing and returns
+  `ctx.Err()`.
 - `Range(start, end)` iterates over the keys in `[start, end)` in byte
   order. A nil `end` has no upper bound; `start >= end` is empty.
   `Prefix(p)` iterates over the keys that start with `p`. An iterator sees
@@ -28,7 +31,18 @@ Walkthrough of the API and the design. The on-disk form is in [formats.md](forma
 - `Iterator`: call `Next` before each `Key` and `Value`, then check `Err`.
   `Next` is false at the end, on an error and after `Close`. `Close` is
   idempotent and returns `Err`. Key and value slices are the caller's to
-  keep.
+  keep. Close every iterator; one whose `Next` returned false is already
+  released.
+- `Store` is the interface of `Put`, `Delete`, `Get`, `Range`, `Prefix` and
+  `Close`, and `*DB` implements it. A nil error from `Put` or `Delete` means the
+  write was accepted; on `*DB` it is readable as soon as the call returns.
+  `Snapshot`, `Len` and `Refresh` are not part of it, since they have no meaning
+  for every writer model. Another implementation of `Store` builds its
+  iterators with `NewIterator(seq, stop)`: `Next` calls `stop` once `seq` ends,
+  `Close` stops `seq` first and then calls `stop` if `Next` did not, and the
+  result of `stop` is what `Err` returns. `kolokvtest.TestStore` runs the
+  contract against a store made by a function you give it, with a `settle`
+  function that waits until the writes made so far are readable.
 - `Snapshot()` returns a read view at the current log length, with `Get`,
   `Range`, `Prefix` and `Len`. It copies the index (keys and entry
   numbers, no values), holds no resources and needs no closing.

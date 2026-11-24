@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -30,11 +31,12 @@ func main() {
 	check(err)
 	db, err := kolokv.Open(l)
 	check(err)
-	check(db.Put([]byte("user/ana"), []byte("admin")))
-	check(db.Put([]byte("user/bo"), []byte("guest")))
-	check(db.Put([]byte("user/bo"), []byte("editor")))
-	check(db.Put([]byte("user/cy"), []byte("guest")))
-	check(db.Delete([]byte("user/cy")))
+	ctx := context.Background()
+	check(db.Put(ctx, []byte("user/ana"), []byte("admin")))
+	check(db.Put(ctx, []byte("user/bo"), []byte("guest")))
+	check(db.Put(ctx, []byte("user/bo"), []byte("editor")))
+	check(db.Put(ctx, []byte("user/cy"), []byte("guest")))
+	check(db.Delete(ctx, []byte("user/cy")))
 	logID := l.ID()
 	check(db.Close())
 
@@ -78,7 +80,7 @@ func main() {
 	if _, err := reader.Get([]byte("user/cy")); errors.Is(err, kolokv.ErrNotFound) {
 		fmt.Println("peer: user/cy not found")
 	}
-	if err := reader.Put([]byte("user/dee"), nil); errors.Is(err, kolokv.ErrReadOnly) {
+	if err := reader.Put(ctx, []byte("user/dee"), nil); errors.Is(err, kolokv.ErrReadOnly) {
 		fmt.Println("peer: read-only")
 	}
 }

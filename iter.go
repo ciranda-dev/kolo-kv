@@ -10,6 +10,9 @@ import (
 type Iterator struct {
 	db         *DB
 	items      []item
+	pull       func() ([]byte, []byte, bool) // set by NewIterator, nil once released
+	cancel     func()
+	stop       func() error
 	key, value []byte
 	err        error
 }
@@ -18,6 +21,15 @@ type Iterator struct {
 // A value destroyed by Delete after the iterator was made is skipped.
 func (it *Iterator) Next() bool {
 	it.key, it.value = nil, nil
+	if it.pull != nil {
+		k, v, ok := it.pull()
+		if !ok {
+			it.release()
+			return false
+		}
+		it.key, it.value = k, v
+		return true
+	}
 	for len(it.items) > 0 {
 		x := it.items[0]
 		it.items = it.items[1:]
@@ -46,8 +58,19 @@ func (it *Iterator) Err() error { return it.err }
 
 // Close stops the iteration and returns Err.
 func (it *Iterator) Close() error {
+	it.release()
 	it.items, it.key, it.value = nil, nil, nil
 	return it.err
+}
+
+// release stops the sequence of a NewIterator iterator and keeps the result of its stop function.
+func (it *Iterator) release() {
+	if it.pull == nil {
+		return
+	}
+	it.cancel()
+	it.pull = nil
+	it.err = it.stop()
 }
 
 // Snapshot is a read view of a store at one log length. It is safe for concurrent use and holds no resources.

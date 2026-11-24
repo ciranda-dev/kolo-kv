@@ -2,6 +2,7 @@ package kolokv
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"runtime"
@@ -122,10 +123,10 @@ func TestReaderIsReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reader.Close()
-	if err := reader.Put([]byte("a"), []byte("2")); !errors.Is(err, ErrReadOnly) {
+	if err := reader.Put(context.Background(), []byte("a"), []byte("2")); !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("Put on a reader: %v", err)
 	}
-	if err := reader.Delete([]byte("a")); !errors.Is(err, ErrReadOnly) {
+	if err := reader.Delete(context.Background(), []byte("a")); !errors.Is(err, ErrReadOnly) {
 		t.Fatalf("Delete on a reader: %v", err)
 	}
 	wantValue(t, reader, "a", "1")
