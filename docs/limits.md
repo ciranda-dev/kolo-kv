@@ -25,6 +25,18 @@ The index (each live key and the number of its entry) is in memory; values stay 
 
 A put of a new key inserts into a sorted slice and moves the keys after it while it holds the write lock. In a measurement on one laptop (Apple M5) an insert took about 14 microseconds with 100,000 keys and about 0.4 milliseconds with 1,000,000 keys; reads wait for that time.
 
+## Refresh cost
+
+`Refresh` replays the whole replica, so its cost grows with the number of entries. Measured with `BenchmarkRefresh` (`go test -run '^$' -bench Refresh -benchtime=3x -count=3`) on an unchanged reader whose replica is on Pebble, entries of a 12-byte key and a 100-byte value, on an Apple M5 with Go 1.27.4 (darwin/arm64), load average 6.96 6.29 5.34 before the run and 5.98 6.09 5.33 after. The three runs of each size:
+
+| Entries | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| 1,000 | 2691375, 2641653, 2648611 | about 4.35 MB | about 35,100 |
+| 10,000 | 33277167, 33597014, 33492347 | about 44.5 MB | about 370,500 |
+| 100,000 | 419548056, 410720208, 410692792 | about 436 MB | about 3,704,000 |
+
+The numbers are for this machine and these entries only.
+
 ## Concurrency
 
 A `DB` and a `Snapshot` are safe for concurrent use. Writes are serialized. An `Iterator` is for one goroutine. No call waits on the network: `Put` and `Delete` take a `context.Context` for the `Store` interface and check it once before they write.
