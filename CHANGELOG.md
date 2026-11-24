@@ -7,9 +7,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-### Breaking
+### Changed
 
-- `DB.Put` and `DB.Delete` take a `context.Context` as their first argument. A `ctx` that is already done writes nothing and returns `ctx.Err()`.
+- **Breaking:** `DB.Put` and `DB.Delete` take a `context.Context` as their first argument. A `ctx` that is already done writes nothing and returns `ctx.Err()`.
 
 ### Added
 
